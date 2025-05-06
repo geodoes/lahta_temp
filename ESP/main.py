@@ -65,6 +65,19 @@ def connect_server():
         blink(2)
         machine.reset()
 
+from bmp180 import BMP180
+
+# Настройка I2C для BMP180
+i2c = machine.I2C(scl=machine.Pin(26), sda=machine.Pin(25))
+bmp = BMP180(i2c)
+bmp.oversample_sett = 2
+bmp.sea_level_pressure = 101325
+
+roms = ds.scan()
+if not roms:
+    blink(3)
+    machine.reset()
+
 # Основной цикл
 connect_wifi()
 sock = connect_server()
@@ -75,12 +88,15 @@ while True:
         time.sleep_ms(750)
         for rom in roms:
             temp = ds.read_temp(rom)
-            if temp is None:
+            bmp.measure()
+            pressure = bmp.pressure / 133.322
+            if temp is None or pressure is None:
                 raise ValueError("Ошибка датчика")
-            sock.send(str(temp).encode())
+            data = f"{temp:.2f},{pressure:.2f}"
+            sock.send(data.encode())
             print("Отправлено:", temp)
             blink(2, duration=0.2, pause=0.2)
-        time.sleep(20)
+        time.sleep(40)
     except Exception:
         blink(3)
         machine.reset()

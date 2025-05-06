@@ -1,6 +1,7 @@
 import socket
 import datetime
 import pymysql
+import re
 
 HOST = '192.168.1.207'
 PORT = 12345
@@ -15,35 +16,20 @@ DB_CONFIG = {
     'cursorclass': pymysql.cursors.DictCursor
 }
 
-def insert_to_db(timestamp, temperature):
+def insert_to_db(timestamp, temperature, pressure):
     try:
         connection = pymysql.connect(**DB_CONFIG)
         with connection:
             with connection.cursor() as cursor:
                 sql = """
                     INSERT INTO monitor (date, t, p, hum, w, q)
-                    VALUES (%s, %s, NULL, NULL, NULL, NULL)
+                    VALUES (%s, %s, %s, NULL, NULL, NULL)
                 """
-                cursor.execute(sql, (timestamp, temperature))
+                cursor.execute(sql, (timestamp, temperature, pressure))
             connection.commit()
-            print(f"Данные записаны в БД: {timestamp}, {temperature}")
+            print(f"Данные записаны в БД: {timestamp}, {temperature}, {pressure}")
     except Exception as e:
         print(f"Ошибка записи в БД: {e}")
-
-def is_valid_data(data):
-    try:
-        float(data.strip())
-        return True
-    except ValueError:
-        return False
-
-def clean_data(data):
-    # Разделение склеенных значений и фильтрация
-    parts = data.strip().split()
-    for part in parts:
-        if is_valid_data(part):
-            return float(part.strip())
-    raise ValueError("Нет валидных данных")
 
 def handle_client(conn):
     with conn:
@@ -54,19 +40,21 @@ def handle_client(conn):
                     print("Соединение потеряно.")
                     break
 
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                if is_valid_data(data):
-                    temperature = float(data)
-                else:
-                    temperature = clean_data(data)
+                parts = re.split(r'[ ,]+', data)
+                if len(parts) != 2:
+                    print(f"Некорректные данные: {data}")
+                    continue
 
-                insert_to_db(timestamp, temperature)
+                temperature = float(parts[0])
+                pressure = float(parts[1])
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                insert_to_db(timestamp, temperature, pressure)
 
             except (ConnectionResetError, ConnectionAbortedError):
                 print("ESP отключился.")
                 break
             except ValueError as ve:
-                print(f"Ошибка: некорректные данные: {data}")
+                print(f"Ошибка преобразования: {ve}")
             except Exception as e:
                 print(f"Ошибка во время обработки: {e}")
                 break
